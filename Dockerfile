@@ -1,8 +1,9 @@
-FROM alpine:3.9
+FROM golang:alpine
 
 LABEL maintainer="KoalaRong <jimsky2018@outlook.com>"
 
 ENV NGINX_VERSION 1.15.9
+ENV PCRE_VERSION 8.43
 
 RUN GPG_KEYS=B0F4253373F8F6F510D42178520A9993A1C052F8 \
 	&& CONFIG="\
@@ -58,7 +59,6 @@ RUN GPG_KEYS=B0F4253373F8F6F510D42178520A9993A1C052F8 \
 		gcc \
 		libc-dev \
 		make \
-		openssl-dev \
 		pcre-dev \
 		zlib-dev \
 		linux-headers \
@@ -68,6 +68,9 @@ RUN GPG_KEYS=B0F4253373F8F6F510D42178520A9993A1C052F8 \
 		gd-dev \
 		geoip-dev \
 		git \
+		cmake \
+		clang \
+		#build-essential \
 	&& curl -fSL https://nginx.org/download/nginx-$NGINX_VERSION.tar.gz -o nginx.tar.gz \
 	&& curl -fSL https://nginx.org/download/nginx-$NGINX_VERSION.tar.gz.asc  -o nginx.tar.gz.asc \
 	&& export GNUPGHOME="$(mktemp -d)" \
@@ -88,10 +91,27 @@ RUN GPG_KEYS=B0F4253373F8F6F510D42178520A9993A1C052F8 \
 	&& tar -zxC /usr/src -f nginx.tar.gz \
 	&& rm nginx.tar.gz \
 	&& cd /usr/src \
-	&& git clone https://github.com/google/ngx_brotli.git \
+	&& git clone https://github.com/eustas/ngx_brotli.git \
 	&& cd ngx_brotli \
 	&& git submodule update --init \
+	&& cd .. \
+	&& git clone https://github.com/S8Cloud/sslpatch.git \
+	&& git clone -b master https://github.com/google/boringssl.git \
+	&& cd boringssl \
+	&& patch -p1 <../sslpatch/BoringSSL-enable-TLS1.3.patch \
+	&& patch -p1 <../sslpatch/BoringSSL-enable-AES_CBC.patch \
+	&& mkdir build && cd build \
+	&& cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_POSITION_INDEPENDENT_CODE=TRUE -DOPENSSL_SMALL=1 .. \
+	&& make -j $(nproc) \
+	&& cd .. && mkdir -p .openssl/lib && cd .openssl && ln -s ../include . \
+	&& cd .. && cp build/crypto/libcrypto.* build/ssl/libssl.* .openssl/lib \
 	&& cd /usr/src/nginx-$NGINX_VERSION \
+	&& cd /usr/src \
+	&& git clone https://github.com/cloudflare/zlib \
+	&& cd zlib && ./configure && cd .. \
+	&& wget -c https://ftp.pcre.org/pub/pcre/pcre-${PCRE_VERSION}.zip && unzip pcre-${PCRE_VERSION}.zip && rm pcre-${PCRE_VERSION}.zip \
+	&& cd pcre-${PCRE_VERSION} && ./configure && cd .. && mv pcre-${PCRE_VERSION} pcre \
+	&& patch -p1 < ../sslpatch/Nginx-cloudflare-combined-modern.patch \
 	&& ./configure $CONFIG \
 	&& make -j$(getconf _NPROCESSORS_ONLN) \
 	&& make install \
