@@ -1,80 +1,63 @@
-FROM golang:alpine as builder
+FROM golang:alpine as boringssl_builder
 
-RUN set -x \
-# use tuna mirrors
-    && sed -i 's/dl-cdn.alpinelinux.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apk/repositories \
-    && apk update\
-	&& apk upgrade\
-	&& apk add --no-cache \
-	gcc \
-    libc-dev \
-	perl-dev \
-	git \
-	cmake \
-	make \
-	bash \
-    alpine-sdk \
-    findutils \
-	build-base \
-	libunwind-dev \
-	linux-headers \
+RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apk/repositories \
+	&& apk update \
+	&& apk add --no-cache --virtual .build-deps \
+		gcc libc-dev perl-dev git cmake make g++ libunwind-dev linux-headers musl-dev musl-utils \
 	&& mkdir -p /usr/local/src \
 	&& git clone --depth=1 https://gitee.com/koalarong/boringssl.git /usr/local/src/boringssl \
 	&& cd /usr/local/src/boringssl \
 	&& mkdir build && cd build && cmake .. \
-	&& make && cd ../ \
+	&& make -j$(getconf _NPROCESSORS_ONLN) && cd ../ \
 	&& mkdir -p .openssl/lib && cd .openssl && ln -s ../include . && cd ../ \
-	&& cp build/crypto/libcrypto.a build/ssl/libssl.a .openssl/lib
+	&& cp build/crypto/libcrypto.a build/ssl/libssl.a .openssl/lib 
 
-
-FROM alpine:latest as nginx
-
-LABEL maintainer="NGINX Docker Maintainers <docker-maint@nginx.com>"
+FROM alpine:latest as builder_nginx
 
 ENV NGINX_VERSION 1.18.0
-ENV MOD_PAGESPEED_TAG v1.13.35.2
-ENV NGX_PAGESPEED_TAG v1.13.35.2-stable
+
+WORKDIR /usr/local/src
+
+COPY --from=boringssl_builder /usr/local/src/boringssl ./boringssl
 
 RUN set -x \
 # use tuna mirrors
     && sed -i 's/dl-cdn.alpinelinux.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apk/repositories \
-    && apk update\
-	&& apk upgrade\
 # create nginx user/group first, to be consistent throughout docker variants
     && addgroup -g 101 -S nginx \
     && adduser -S -D -H -u 101 -h /var/cache/nginx -s /sbin/nologin -G nginx -g nginx nginx \
 	&& apk add --no-cache --virtual .build-deps \
+		bash \
+		binutils \
+		libgcc \
+		libstdc++ \
+		libtool \
+		su-exec \
 		git \
 		gcc \
         libc-dev \
         make \
-		cmake \
         pcre-dev \
         zlib-dev \
+		openssl-dev \
         linux-headers \
         libxslt-dev \
 		libunwind-dev \
         gd-dev \
         geoip-dev \
         perl-dev \
-		musl-dev \
-		musl-utils \
         libedit-dev \
         mercurial \
-        bash \
         alpine-sdk \
         findutils \
 		build-base \
-		wget \
 	&& curl -fSL https://nginx.org/download/nginx-$NGINX_VERSION.tar.gz -o nginx.tar.gz \
-	&& mkdir -p /usr/local/src \
 	&& tar -zxC /usr/local/src -f nginx.tar.gz \
-	&& rm nginx.tar.gz
-COPY --from=builder /usr/local/src/boringssl /usr/local/src/boringssl
-RUN set -x \
-	&& git clone --depth=1 --recurse-submodules https://gitee.com/koalarong/ngx_brotli.git /usr/local/src/ngx_brotli\
-	# && git clone --depth=1  https://gitee.com/koalarong/ngx_brotli.git /usr/local/src/ngx_brotli\
-	&& cd /usr/local/src \
+	&& rm nginx.tar.gz \
+	#&& git clone --depth=1  https://gitee.com/koalarong/ngx_brotli.git /usr/local/src/ngx_brotli\
+	#&& cd /usr/local/src/ngx_brotli \
+	#&& git submodule update --init \
+	# && cd /usr/local/src \
 	# && wget https://github.com/gperftools/gperftools/releases/download/gperftools-2.7.90/gperftools-2.7.90.tar.gz \
 	# && tar -zxf gperftools-2.7.90.tar.gz \
 	# && cd gperftools-2.7.90 \
@@ -138,7 +121,7 @@ RUN set -x \
 		# --with-ld-opt="-Wl,-z,relro,--start-group -lapr-1 -laprutil-1 -licudata -licuuc -lpng -lturbojpeg -ljpeg"\
 		--with-ld-opt=-Wl,--as-needed \
 		--with-cc-opt='-Os -fomit-frame-pointer' \
-		--add-module=/usr/local/src/ngx_brotli \
+		#--add-module=/usr/local/src/ngx_brotli \
 	&& touch /usr/local/src/boringssl/.openssl/include/openssl/ssl.h \
 	&& make -j$(getconf _NPROCESSORS_ONLN) \
 	&& make install \
