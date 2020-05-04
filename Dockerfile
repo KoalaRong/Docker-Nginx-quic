@@ -24,8 +24,7 @@ RUN set -x \
 # use tuna mirrors
     && sed -i 's/dl-cdn.alpinelinux.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apk/repositories \
 # create nginx user/group first, to be consistent throughout docker variants
-	&& addgroup -g 101 -S nginx \
-    && adduser -S -D -H -u 101 -h /var/cache/nginx -s /sbin/nologin -G nginx -g nginx nginx \
+	&& apk --no-cache upgrade \
 	&& apk add --no-cache --virtual .build-deps \
 		bash \
 		binutils \
@@ -58,14 +57,6 @@ RUN set -x \
 	&& git clone --depth=1  https://gitee.com/koalarong/ngx_brotli.git /usr/local/src/ngx_brotli\
 	&& cd /usr/local/src/ngx_brotli \
 	&& git submodule update --init \
-	# && cd /usr/local/src \
-	# && wget https://github.com/gperftools/gperftools/releases/download/gperftools-2.7.90/gperftools-2.7.90.tar.gz \
-	# && tar -zxf gperftools-2.7.90.tar.gz \
-	# && cd gperftools-2.7.90 \
-	# && ./configure && make -j$(getconf _NPROCESSORS_ONLN) && make install \
-	# && echo '/usr/local/lib' > /etc/ld.so.conf.d/local_lib.conf && ldconfig \
-	# && mkdir -p /tmp/tcmalloc \
-	# && chmod 777 /tmp/tcmalloc \
 	# make nginx
 	&& cd /usr/local/src/nginx-$NGINX_VERSION \
 	&& ./configure \
@@ -118,7 +109,6 @@ RUN set -x \
 		--with-stream_geoip_module=dynamic \
 		--with-pcre-jit \
 		--with-openssl=/usr/local/src/boringssl/ \
-		# –-with-google_perftools_module \
 		# --with-ld-opt="-Wl,-z,relro,--start-group -lapr-1 -laprutil-1 -licudata -licuuc -lpng -lturbojpeg -ljpeg"\
 		--with-ld-opt=-'Wl,--as-needed' \
 		--with-cc-opt='-Os -fomit-frame-pointer' \
@@ -146,7 +136,8 @@ COPY --from=nginx_builder /usr/share/nginx/html/ /usr/share/nginx/html/
 
 RUN set -x \
 	&& sed -i 's/dl-cdn.alpinelinux.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apk/repositories \
-# create nginx user/group first, to be consistent throughout docker variants
+	&& apk --no-cache upgrade \
+	# create nginx user/group first, to be consistent throughout docker variants
     && addgroup -g 101 -S nginx \
     && adduser -S -D -H -u 101 -h /var/cache/nginx -s /sbin/nologin -G nginx -g nginx nginx \
 	# Bring in gettext so we can get `envsubst`, then throw
