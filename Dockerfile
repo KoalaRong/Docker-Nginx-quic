@@ -1,7 +1,7 @@
 FROM golang:alpine as boringssl_builder
 
 RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apk/repositories \
-	&& apk update \
+	&& apk --no-cache upgrade \
 	&& apk add --no-cache --virtual .build-deps \
 		gcc libc-dev perl-dev git cmake make g++ libunwind-dev linux-headers musl-dev musl-utils \
 	&& mkdir -p /usr/local/src \
@@ -12,19 +12,19 @@ RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apk/re
 	&& mkdir -p .openssl/lib && cd .openssl && ln -s ../include . && cd ../ \
 	&& cp build/crypto/libcrypto.a build/ssl/libssl.a .openssl/lib 
 
-FROM alpine:latest as builder_nginx
+FROM alpine:latest as nginx_builder
 
 ENV NGINX_VERSION 1.18.0
 
 WORKDIR /usr/local/src
 
-COPY --from=boringssl_builder /usr/local/src/boringssl ./boringssl
+COPY --from=boringssl_builder /usr/local/src/boringssl  ./boringssl
 
 RUN set -x \
 # use tuna mirrors
     && sed -i 's/dl-cdn.alpinelinux.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apk/repositories \
 # create nginx user/group first, to be consistent throughout docker variants
-    && addgroup -g 101 -S nginx \
+	&& addgroup -g 101 -S nginx \
     && adduser -S -D -H -u 101 -h /var/cache/nginx -s /sbin/nologin -G nginx -g nginx nginx \
 	&& apk add --no-cache --virtual .build-deps \
 		bash \
@@ -51,12 +51,13 @@ RUN set -x \
         alpine-sdk \
         findutils \
 		build-base \
-	&& curl -fSL https://nginx.org/download/nginx-$NGINX_VERSION.tar.gz -o nginx.tar.gz \
-	&& tar -zxC /usr/local/src -f nginx.tar.gz \
-	&& rm nginx.tar.gz \
-	#&& git clone --depth=1  https://gitee.com/koalarong/ngx_brotli.git /usr/local/src/ngx_brotli\
-	#&& cd /usr/local/src/ngx_brotli \
-	#&& git submodule update --init \
+		wget \
+	&& wget https://nginx.org/download/nginx-$NGINX_VERSION.tar.gz \
+	&& tar -zxC /usr/local/src -f nginx-$NGINX_VERSION.tar.gz \
+	&& rm nginx-$NGINX_VERSION.tar.gz \
+	&& git clone --depth=1  https://gitee.com/koalarong/ngx_brotli.git /usr/local/src/ngx_brotli\
+	&& cd /usr/local/src/ngx_brotli \
+	&& git submodule update --init \
 	# && cd /usr/local/src \
 	# && wget https://github.com/gperftools/gperftools/releases/download/gperftools-2.7.90/gperftools-2.7.90.tar.gz \
 	# && tar -zxf gperftools-2.7.90.tar.gz \
@@ -119,9 +120,9 @@ RUN set -x \
 		--with-openssl=/usr/local/src/boringssl/ \
 		# –-with-google_perftools_module \
 		# --with-ld-opt="-Wl,-z,relro,--start-group -lapr-1 -laprutil-1 -licudata -licuuc -lpng -lturbojpeg -ljpeg"\
-		--with-ld-opt=-Wl,--as-needed \
+		--with-ld-opt=-'Wl,--as-needed' \
 		--with-cc-opt='-Os -fomit-frame-pointer' \
-		#--add-module=/usr/local/src/ngx_brotli \
+		--add-module=/usr/local/src/ngx_brotli \
 	&& touch /usr/local/src/boringssl/.openssl/include/openssl/ssl.h \
 	&& make -j$(getconf _NPROCESSORS_ONLN) \
 	&& make install \
@@ -132,16 +133,30 @@ RUN set -x \
 	&& install -m644 html/50x.html /usr/share/nginx/html/ \
 	&& ln -s ../../usr/lib/nginx/modules /etc/nginx/modules \
 	&& strip /usr/sbin/nginx* \
-	&& strip /usr/lib/nginx/modules/*.so \
-	&& rm -rf /usr/local/src \
-	\
+	&& strip /usr/lib/nginx/modules/*.so  
+
+FROM alpine:latest
+
+ENV NGINX_VERSION 1.18.0
+
+COPY --from=nginx_builder /etc/nginx /etc/nginx
+COPY --from=nginx_builder /usr/sbin/nginx /usr/sbin/nginx
+COPY --from=nginx_builder /usr/lib/nginx/modules/ /usr/lib/nginx/modules/
+COPY --from=nginx_builder /usr/share/nginx/html/ /usr/share/nginx/html/
+
+RUN set -x \
+	&& sed -i 's/dl-cdn.alpinelinux.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apk/repositories \
+# create nginx user/group first, to be consistent throughout docker variants
+    && addgroup -g 101 -S nginx \
+    && adduser -S -D -H -u 101 -h /var/cache/nginx -s /sbin/nologin -G nginx -g nginx nginx \
 	# Bring in gettext so we can get `envsubst`, then throw
 	# the rest away. To do this, we need to install `gettext`
 	# then move `envsubst` out of the way so `gettext` can
 	# be deleted completely, then move `envsubst` back.
 	&& apk add --no-cache --virtual .gettext gettext \
 	&& mv /usr/bin/envsubst /tmp/ \
-	\
+	&& mkdir -p /var/cache/nginx \
+	&& mkdir -p /var/log/nginx \
 	&& runDeps="$( \
 		scanelf --needed --nobanner --format '%n#p' /usr/sbin/nginx /usr/lib/nginx/modules/*.so /tmp/envsubst \
 			| tr ',' '\n' \
@@ -149,19 +164,14 @@ RUN set -x \
 			| awk 'system("[ -e /usr/local/lib/" $1 " ]") == 0 { next } { print "so:" $1 }' \
 	)" \
 	&& apk add --no-cache --virtual .nginx-rundeps $runDeps \
-	&& apk del .build-deps \
 	&& apk del .gettext \
 	&& mv /tmp/envsubst /usr/local/bin/ \
-	\
 	# Bring in tzdata so users could set the timezones through the environment
 	# variables
 	&& apk add --no-cache tzdata \
-	\
 	# forward request and error logs to docker log collector
 	&& ln -sf /dev/stdout /var/log/nginx/access.log \
 	&& ln -sf /dev/stderr /var/log/nginx/error.log \
-	&& mkdir -p /var/cache/nginx/client_temp \
-	&& nginx -t \
 	&& nginx -V 
 
 COPY conf/nginx.conf /etc/nginx/nginx.conf
