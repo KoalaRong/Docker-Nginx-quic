@@ -56,7 +56,16 @@ RUN set -x \
 	&& rm nginx-$NGINX_VERSION.tar.gz \
 	&& git clone --depth=1  https://gitee.com/koalarong/ngx_brotli.git /usr/local/src/ngx_brotli\
 	&& cd /usr/local/src/ngx_brotli \
-	&& git submodule update --init \
+	&& git submodule update --init \	
+	#lua-nginx-module
+	&& wget https://github.com/openresty/luajit2/archive/v2.1-20200102.tar.gz \
+	&& wget https://github.com/vision5/ngx_devel_kit/archive/v0.3.1.tar.gz \
+	&& wget https://github.com/openresty/lua-nginx-module/archive/v0.10.15.tar.gz \
+	&& tar -xzf v2.1-20200102.tar.gz && tar -xzf v0.3.1.tar.gz && tar -xzf v0.10.15.tar.gz \
+	&& cd luajit2-2.1-20200102 \
+	&& make -j$(getconf _NPROCESSORS_ONLN) PREFIX=/usr/local/src/luajit && make install PREFIX=/usr/local/src/luajit \
+	&& export LUAJIT_LIB=/usr/local/src/luajit/lib \
+ 	&& export LUAJIT_INC=/usr/local/src/luajit/include/luajit-2.1 \
 	# make nginx
 	&& cd /usr/local/src/nginx-$NGINX_VERSION \
 	&& ./configure \
@@ -110,9 +119,11 @@ RUN set -x \
 		--with-pcre-jit \
 		--with-openssl=/usr/local/src/boringssl/ \
 		# --with-ld-opt="-Wl,-z,relro,--start-group -lapr-1 -laprutil-1 -licudata -licuuc -lpng -lturbojpeg -ljpeg"\
-		--with-ld-opt=-'Wl,--as-needed' \
-		--with-cc-opt='-Os -fomit-frame-pointer' \
+		--with-ld-opt='-Wl,-rpath,/usr/local/src/luajit/lib' \
+		--with-cc-opt='-Os -fomit-frame-pointer -DNGX_LUA_USE_ASSERT -DNGX_LUA_ABORT_AT_PANIC' \
 		--add-module=/usr/local/src/ngx_brotli \
+		--add-module=/usr/local/src/ngx_devel_kit-0.3.1 \
+        --add-module=/usr/local/src/lua-nginx-module-0.10.15 \
 	&& touch /usr/local/src/boringssl/.openssl/include/openssl/ssl.h \
 	&& make -j$(getconf _NPROCESSORS_ONLN) \
 	&& make install \
@@ -133,12 +144,15 @@ COPY --from=nginx_builder /etc/nginx /etc/nginx
 COPY --from=nginx_builder /usr/sbin/nginx /usr/sbin/nginx
 COPY --from=nginx_builder /usr/lib/nginx/modules/ /usr/lib/nginx/modules/
 COPY --from=nginx_builder /usr/share/nginx/html/ /usr/share/nginx/html/
+COPY --from=nginx_builder /usr/local/src/luajit /usr/local/src/luajit
 
 RUN set -x \
 	&& sed -i 's/dl-cdn.alpinelinux.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apk/repositories \
 	&& apk --no-cache upgrade \
 	# create nginx user/group first, to be consistent throughout docker variants
-    && addgroup -g 101 -S nginx \
+    && export LUAJIT_LIB=/usr/local/src/luajit/lib \
+ 	&& export LUAJIT_INC=/usr/local/src/luajit/include/luajit-2.1 \
+	&& addgroup -g 101 -S nginx \
     && adduser -S -D -H -u 101 -h /var/cache/nginx -s /sbin/nologin -G nginx -g nginx nginx \
 	# Bring in gettext so we can get `envsubst`, then throw
 	# the rest away. To do this, we need to install `gettext`
