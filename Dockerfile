@@ -58,6 +58,7 @@ RUN set -x \
 	&& cd /usr/local/src/ngx_brotli \
 	&& git submodule update --init \	
 	#lua-nginx-module
+	&& cd /usr/local/src \
 	&& wget https://github.com/openresty/luajit2/archive/v2.1-20200102.tar.gz \
 	&& wget https://github.com/vision5/ngx_devel_kit/archive/v0.3.1.tar.gz \
 	&& wget https://github.com/openresty/lua-nginx-module/archive/v0.10.15.tar.gz \
