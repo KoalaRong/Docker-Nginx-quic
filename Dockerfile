@@ -39,16 +39,16 @@ RUN set -x \
 		pcre-dev \
 		zlib-dev \
 		openssl-dev \
-        linux-headers \
-        libxslt-dev \
+		linux-headers \
+		libxslt-dev \
 		libunwind-dev \
-        gd-dev \
-        geoip-dev \
-        perl-dev \
-        libedit-dev \
-        mercurial \
-        alpine-sdk \
-        findutils \
+		gd-dev \
+		geoip-dev \
+		perl-dev \
+		libedit-dev \
+		mercurial \
+		alpine-sdk \
+		findutils \
 		build-base \
 		wget \
 	&& wget https://nginx.org/download/nginx-$NGINX_VERSION.tar.gz \
