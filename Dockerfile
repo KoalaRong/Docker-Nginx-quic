@@ -119,7 +119,6 @@ RUN set -x \
 		--with-stream_geoip_module=dynamic \
 		--with-pcre-jit \
 		--with-openssl=/usr/local/src/boringssl/ \
-		# --with-ld-opt="-Wl,-z,relro,--start-group -lapr-1 -laprutil-1 -licudata -licuuc -lpng -lturbojpeg -ljpeg"\
 		--with-ld-opt='-Wl,-rpath,/usr/local/src/luajit/lib' \
 		--with-cc-opt='-Os -fomit-frame-pointer -DNGX_LUA_USE_ASSERT -DNGX_LUA_ABORT_AT_PANIC' \
 		--add-module=/usr/local/src/ngx_brotli \
