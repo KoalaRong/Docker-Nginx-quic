@@ -34,10 +34,10 @@ RUN set -x \
 		su-exec \
 		git \
 		gcc \
-        libc-dev \
-        make \
-        pcre-dev \
-        zlib-dev \
+		libc-dev \
+		make \
+		pcre-dev \
+		zlib-dev \
 		openssl-dev \
         linux-headers \
         libxslt-dev \
