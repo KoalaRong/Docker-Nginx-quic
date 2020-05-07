@@ -15,6 +15,10 @@ RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apk/re
 FROM alpine:latest as nginx_builder
 
 ENV NGINX_VERSION 1.18.0
+ENV LUAJIT2_VERSION 2.1-20200102
+ENV NGX_DEVEL_KIT 0.3.1
+ENV LUA_NGINX_MODULE 0.10.15
+
 
 WORKDIR /usr/local/src
 
@@ -51,22 +55,23 @@ RUN set -x \
 		findutils \
 		build-base \
 		wget \
-	&& wget https://nginx.org/download/nginx-$NGINX_VERSION.tar.gz \
+	&& wget https://nginx.org/download/nginx-${NGINX_VERSION}.tar.gz \
 	&& tar -zxC /usr/local/src -f nginx-$NGINX_VERSION.tar.gz \
 	&& rm nginx-$NGINX_VERSION.tar.gz \
-	&& git clone --depth=1  https://gitee.com/koalarong/ngx_brotli.git /usr/local/src/ngx_brotli\
-	&& cd /usr/local/src/ngx_brotli \
-	&& git submodule update --init \	
-	#lua-nginx-module
-	&& cd /usr/local/src \
-	&& wget https://github.com/openresty/luajit2/archive/v2.1-20200102.tar.gz \
-	&& wget https://github.com/vision5/ngx_devel_kit/archive/v0.3.1.tar.gz \
-	&& wget https://github.com/openresty/lua-nginx-module/archive/v0.10.15.tar.gz \
-	&& tar -xzf v2.1-20200102.tar.gz && tar -xzf v0.3.1.tar.gz && tar -xzf v0.10.15.tar.gz \
-	&& cd luajit2-2.1-20200102 \
-	&& make -j$(getconf _NPROCESSORS_ONLN) PREFIX=/usr/local/src/luajit && make install PREFIX=/usr/local/src/luajit \
+	# make lua-nginx-module
+	&& wget https://github.com/openresty/luajit2/archive/v${LUAJIT2_VERSION}.tar.gz \
+	&& wget https://github.com/vision5/ngx_devel_kit/archive/v${NGX_DEVEL_KIT}.tar.gz \
+	&& wget https://github.com/openresty/lua-nginx-module/archive/v${LUA_NGINX_MODULE}.tar.gz \
+	&& tar -xzf v${LUAJIT2_VERSION}.tar.gz && tar -xzf v${NGX_DEVEL_KIT}.tar.gz && tar -xzf v${LUA_NGINX_MODULE}.tar.gz \
+	&& cd luajit2-${LUAJIT2_VERSION} \
+	&& make -j$(getconf _NPROCESSORS_ONLN) PREFIX=/usr/local/src/luajit \
+	&& make install PREFIX=/usr/local/src/luajit \
 	&& export LUAJIT_LIB=/usr/local/src/luajit/lib \
  	&& export LUAJIT_INC=/usr/local/src/luajit/include/luajit-2.1 \
+	# ngx_brotli
+	&& git clone --depth=1  https://gitee.com/koalarong/ngx_brotli.git /usr/local/src/ngx_brotli \
+	&& cd /usr/local/src/ngx_brotli \
+	&& git submodule update --init \	
 	# make nginx
 	&& cd /usr/local/src/nginx-$NGINX_VERSION \
 	&& ./configure \
@@ -122,8 +127,8 @@ RUN set -x \
 		--with-ld-opt='-Wl,-rpath,/usr/local/src/luajit/lib' \
 		--with-cc-opt='-Os -fomit-frame-pointer -DNGX_LUA_USE_ASSERT -DNGX_LUA_ABORT_AT_PANIC' \
 		--add-module=/usr/local/src/ngx_brotli \
-		--add-module=/usr/local/src/ngx_devel_kit-0.3.1 \
-        --add-module=/usr/local/src/lua-nginx-module-0.10.15 \
+		--add-module=/usr/local/src/ngx_devel_kit-${NGX_DEVEL_KIT} \
+        --add-module=/usr/local/src/lua-nginx-module-${LUA_NGINX_MODULE} \
 	&& touch /usr/local/src/boringssl/.openssl/include/openssl/ssl.h \
 	&& make -j$(getconf _NPROCESSORS_ONLN) \
 	&& make install \
