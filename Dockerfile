@@ -21,6 +21,7 @@ ENV LUA_NGINX_MODULE 0.10.15
 
 
 WORKDIR /usr/local/src
+COPY ./patch/Enable_BoringSSL_OCSP.patch Enable_BoringSSL_OCSP.patch
 
 COPY --from=boringssl_builder /usr/local/src/boringssl  ./boringssl
 
@@ -69,11 +70,12 @@ RUN set -x \
 	&& export LUAJIT_LIB=/usr/local/src/luajit/lib \
 	&& export LUAJIT_INC=/usr/local/src/luajit/include/luajit-2.1 \
 	# ngx_brotli
-	&& git clone --depth=1  https://gitee.com/koalarong/ngx_brotli.git /usr/local/src/ngx_brotli \
+	&& git clone --depth=1  https://github.com/google/ngx_brotli.git /usr/local/src/ngx_brotli \
 	&& cd /usr/local/src/ngx_brotli \
 	&& git submodule update --init \	
 	# make nginx
 	&& cd /usr/local/src/nginx-$NGINX_VERSION \
+	&& patch -p1 < /usr/local/src/Enable_BoringSSL_OCSP.patch \
 	&& ./configure \
 	--prefix=/etc/nginx \
 	--sbin-path=/usr/sbin/nginx \
