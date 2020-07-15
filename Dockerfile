@@ -187,7 +187,6 @@ RUN set -x \
 	&& nginx -V 
 
 COPY conf/nginx.conf /etc/nginx/nginx.conf
-# COPY conf/nginx.vh.default.conf /etc/nginx/conf.d/default.conf
 
 EXPOSE 80 443
 
