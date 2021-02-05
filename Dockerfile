@@ -1,6 +1,8 @@
 FROM golang:alpine as boringssl_builder
 
-RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apk/repositories \
+RUN set -x \
+	# use tuna mirrors
+	&& sed -i 's/dl-cdn.alpinelinux.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apk/repositories \
 	&& apk --no-cache upgrade \
 	&& apk add --no-cache --virtual .build-deps \
 	gcc libc-dev perl-dev git cmake make g++ libunwind-dev linux-headers musl-dev musl-utils \
@@ -11,14 +13,11 @@ RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apk/re
 	&& make -j$(getconf _NPROCESSORS_ONLN) && cd ../ \
 	&& mkdir -p .openssl/lib && cd .openssl && ln -s ../include . && cd ../ \
 	&& cp build/crypto/libcrypto.a build/ssl/libssl.a .openssl/lib 
-
+	
 FROM alpine:latest as nginx_builder
 
-ENV NGINX_VERSION 1.19.0
-ENV LUAJIT2_VERSION 2.1-20200102
-ENV NGX_DEVEL_KIT 0.3.1
-ENV LUA_NGINX_MODULE 0.10.15
-
+ENV NGINX_VERSION 1.19.6
+#https://nginx.org/en/download.html
 
 WORKDIR /usr/local/src
 COPY ./patch/Enable_BoringSSL_OCSP.patch Enable_BoringSSL_OCSP.patch
@@ -59,16 +58,6 @@ RUN set -x \
 	&& wget https://nginx.org/download/nginx-${NGINX_VERSION}.tar.gz \
 	&& tar -zxC /usr/local/src -f nginx-$NGINX_VERSION.tar.gz \
 	&& rm nginx-$NGINX_VERSION.tar.gz \
-	# make lua-nginx-module
-	&& wget https://github.com/openresty/luajit2/archive/v${LUAJIT2_VERSION}.tar.gz \
-	&& wget https://github.com/vision5/ngx_devel_kit/archive/v${NGX_DEVEL_KIT}.tar.gz \
-	&& wget https://github.com/openresty/lua-nginx-module/archive/v${LUA_NGINX_MODULE}.tar.gz \
-	&& tar -xzf v${LUAJIT2_VERSION}.tar.gz && tar -xzf v${NGX_DEVEL_KIT}.tar.gz && tar -xzf v${LUA_NGINX_MODULE}.tar.gz \
-	&& cd luajit2-${LUAJIT2_VERSION} \
-	&& make -j$(getconf _NPROCESSORS_ONLN) PREFIX=/usr/local/src/luajit \
-	&& make install PREFIX=/usr/local/src/luajit \
-	&& export LUAJIT_LIB=/usr/local/src/luajit/lib \
-	&& export LUAJIT_INC=/usr/local/src/luajit/include/luajit-2.1 \
 	# ngx_brotli
 	&& git clone --depth=1  https://github.com/google/ngx_brotli.git /usr/local/src/ngx_brotli \
 	&& cd /usr/local/src/ngx_brotli \
@@ -126,11 +115,9 @@ RUN set -x \
 	--with-stream_geoip_module=dynamic \
 	--with-pcre-jit \
 	--with-openssl=/usr/local/src/boringssl/ \
-	--with-ld-opt='-Wl,-rpath,/usr/local/src/luajit/lib' \
-	--with-cc-opt='-Os -fomit-frame-pointer -DNGX_LUA_USE_ASSERT -DNGX_LUA_ABORT_AT_PANIC' \
+	--with-ld-opt='-Wl,-rpath' \
+	--with-cc-opt='-Os -fomit-frame-pointer' \
 	--add-module=/usr/local/src/ngx_brotli \
-	--add-module=/usr/local/src/ngx_devel_kit-${NGX_DEVEL_KIT} \
-	--add-module=/usr/local/src/lua-nginx-module-${LUA_NGINX_MODULE} \
 	&& touch /usr/local/src/boringssl/.openssl/include/openssl/ssl.h \
 	&& make -j$(getconf _NPROCESSORS_ONLN) \
 	&& make install \
@@ -145,20 +132,18 @@ RUN set -x \
 
 FROM alpine:latest
 
-ENV NGINX_VERSION 1.18.0
+ENV NGINX_VERSION 1.19.6
+#https://nginx.org/en/download.html
 
 COPY --from=nginx_builder /etc/nginx /etc/nginx
 COPY --from=nginx_builder /usr/sbin/nginx /usr/sbin/nginx
 COPY --from=nginx_builder /usr/lib/nginx/modules/ /usr/lib/nginx/modules/
 COPY --from=nginx_builder /usr/share/nginx/html/ /usr/share/nginx/html/
-COPY --from=nginx_builder /usr/local/src/luajit /usr/local/src/luajit
 
 RUN set -x \
 	&& sed -i 's/dl-cdn.alpinelinux.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apk/repositories \
 	&& apk --no-cache upgrade \
 	# create nginx user/group first, to be consistent throughout docker variants
-	&& export LUAJIT_LIB=/usr/local/src/luajit/lib \
-	&& export LUAJIT_INC=/usr/local/src/luajit/include/luajit-2.1 \
 	&& addgroup -g 101 -S nginx \
 	&& adduser -S -D -H -u 101 -h /var/cache/nginx -s /sbin/nologin -G nginx -g nginx nginx \
 	# Bring in gettext so we can get `envsubst`, then throw
