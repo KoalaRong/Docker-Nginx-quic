@@ -22,7 +22,7 @@ ENV NGINX_VERSION 1.21.2
 #https://nginx.org/en/download.html
 
 WORKDIR /usr/local/src
-COPY ./patch/Enable_BoringSSL_OCSP.patch Enable_BoringSSL_OCSP.patch
+COPY ./patch ./patch
 
 COPY --from=boringssl_builder /usr/local/src/boringssl  ./boringssl
 
@@ -65,7 +65,8 @@ RUN set -x \
 	&& git submodule update --init \	
 	# make nginx
 	&& cd /usr/local/src/nginx-$NGINX_VERSION \
-	&& patch -p1 < /usr/local/src/Enable_BoringSSL_OCSP.patch \
+	&& patch -p1 < /usr/local/src/patch/nginx.patch \
+	&& patch -p1 < /usr/local/src/patch/Enable_BoringSSL_OCSP.patch \
 	&& ./configure \
 	--prefix=/etc/nginx \
 	--sbin-path=/usr/sbin/nginx \
