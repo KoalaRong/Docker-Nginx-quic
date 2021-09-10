@@ -1,21 +1,3 @@
-FROM golang:alpine as boringssl_builder
-
-RUN set -x \
-	# use tuna mirrors 
-	&& sed -i 's/dl-cdn.alpinelinux.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apk/repositories \
-	&& go env -w GO111MODULE=on \
-	&& go env -w GOPROXY=https://goproxy.cn,direct \
-	#use goproxy
-	&& apk add --no-cache --virtual .build-deps \
-	gcc libc-dev perl-dev git cmake make g++ libunwind-dev linux-headers musl-dev musl-utils \
-	&& mkdir -p /usr/local/src \
-	&& git clone https://github.com/google/boringssl.git /usr/local/src/boringssl \
-	&& cd /usr/local/src/boringssl \
-	&& mkdir build && cd build && cmake .. \
-	&& make -j$(getconf _NPROCESSORS_ONLN) && cd ../ \
-	&& mkdir -p .openssl/lib && cd .openssl && ln -s ../include . && cd ../ \
-	&& cp build/crypto/libcrypto.a build/ssl/libssl.a .openssl/lib 
-
 FROM alpine:latest as nginx_builder
 
 ENV NGINX_VERSION 1.21.2
@@ -23,8 +5,6 @@ ENV NGINX_VERSION 1.21.2
 
 WORKDIR /usr/local/src
 COPY ./patch ./patch
-
-COPY --from=boringssl_builder /usr/local/src/boringssl  ./boringssl
 
 RUN set -x \
 	# use tuna mirrors
@@ -59,6 +39,9 @@ RUN set -x \
 	&& wget https://nginx.org/download/nginx-${NGINX_VERSION}.tar.gz \
 	&& tar -zxC /usr/local/src -f nginx-$NGINX_VERSION.tar.gz \
 	&& rm nginx-$NGINX_VERSION.tar.gz \
+	&& wget https://www.openssl.org/source/openssl-1.1.1l.tar.gz \
+	&& tar -xzC /usr/local/src -f openssl-1.1.1l.tar.gz \
+	&& rm -f openssl-1.1.1l.tar.gz \
 	# ngx_brotli
 	&& git clone https://github.com/google/ngx_brotli.git /usr/local/src/ngx_brotli \
 	&& cd /usr/local/src/ngx_brotli \
@@ -66,7 +49,6 @@ RUN set -x \
 	# make nginx
 	&& cd /usr/local/src/nginx-$NGINX_VERSION \
 	&& patch -p1 < /usr/local/src/patch/nginx.patch \
-	&& patch -p1 < /usr/local/src/patch/Enable_BoringSSL_OCSP.patch \
 	&& ./configure \
 	--prefix=/etc/nginx \
 	--sbin-path=/usr/sbin/nginx \
@@ -116,12 +98,12 @@ RUN set -x \
 	--with-stream_realip_module \
 	--with-stream_geoip_module=dynamic \
 	--with-pcre-jit \
-	--with-openssl=/usr/local/src/boringssl/ \
+	--with-openssl=/usr/local/src/openssl-1.1.1l/ \
 	--with-openssl-opt='zlib enable-weak-ssl-ciphers enable-ec_nistp_64_gcc_128 -march=native -Wl,-flto' \
 	--with-ld-opt='-Wl,-z,relro -Wl,-z,now -fPIC -lrt ' \
 	--with-cc-opt='-m64 -O3 -g -DTCP_FASTOPEN=23 -ffast-math -march=native -flto -fstack-protector-strong -fomit-frame-pointer -fPIC -Wformat -Wdate-time -D_FORTIFY_SOURCE=2 ' \
 	--add-module=/usr/local/src/ngx_brotli \
-	&& touch /usr/local/src/boringssl/.openssl/include/openssl/ssl.h \
+	#&& touch /usr/local/src/boringssl/.openssl/include/openssl/ssl.h \
 	&& make -j$(getconf _NPROCESSORS_ONLN) \
 	&& make install \
 	&& rm -rf /etc/nginx/html/ \
