@@ -39,9 +39,9 @@ RUN set -x \
 	&& wget https://nginx.org/download/nginx-${NGINX_VERSION}.tar.gz \
 	&& tar -zxC /usr/local/src -f nginx-$NGINX_VERSION.tar.gz \
 	&& rm nginx-$NGINX_VERSION.tar.gz \
-	&& wget https://www.openssl.org/source/openssl-1.1.1l.tar.gz \
-	&& tar -xzC /usr/local/src -f openssl-1.1.1l.tar.gz \
-	&& rm -f openssl-1.1.1l.tar.gz \
+	&& wget https://www.openssl.org/source/openssl-3.0.0.tar.gz \
+	&& tar -xzC /usr/local/src -f openssl-3.0.0.tar.gz \
+	&& rm -f openssl-3.0.0.tar.gz \
 	# ngx_brotli
 	&& git clone https://github.com/google/ngx_brotli.git /usr/local/src/ngx_brotli \
 	&& cd /usr/local/src/ngx_brotli \
@@ -98,8 +98,8 @@ RUN set -x \
 	--with-stream_realip_module \
 	--with-stream_geoip_module=dynamic \
 	--with-pcre-jit \
-	--with-openssl=/usr/local/src/openssl-1.1.1l/ \
-	--with-openssl-opt='zlib enable-weak-ssl-ciphers enable-ec_nistp_64_gcc_128 -march=native -Wl,-flto' \
+	--with-openssl=/usr/local/src/openssl-3.0.0/ \
+	--with-openssl-opt='zlib -march=native -Wl,-flto' \
 	--with-ld-opt='-Wl,-z,relro -Wl,-z,now -fPIC -lrt ' \
 	--with-cc-opt='-m64 -O3 -g -DTCP_FASTOPEN=23 -ffast-math -march=native -flto -fstack-protector-strong -fomit-frame-pointer -fPIC -Wformat -Wdate-time -D_FORTIFY_SOURCE=2 ' \
 	--add-module=/usr/local/src/ngx_brotli \
