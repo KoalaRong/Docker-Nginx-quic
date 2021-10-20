@@ -18,7 +18,7 @@ RUN set -x \
 
 FROM alpine:latest as nginx_builder
 
-ENV NGINX_VERSION 1.21.2
+ENV NGINX_VERSION 1.21.3
 #https://nginx.org/en/download.html
 
 WORKDIR /usr/local/src
@@ -117,7 +117,7 @@ RUN set -x \
 	--with-stream_geoip_module=dynamic \
 	--with-pcre-jit \
 	--with-openssl=/usr/local/src/boringssl/ \
-	--with-openssl-opt='zlib enable-weak-ssl-ciphers enable-ec_nistp_64_gcc_128 -march=native -Wl,-flto' \
+	--with-openssl-opt='zlib -march=native -Wl,-flto' \
 	--with-ld-opt='-Wl,-z,relro -Wl,-z,now -fPIC -lrt ' \
 	--with-cc-opt='-m64 -O3 -g -DTCP_FASTOPEN=23 -ffast-math -march=native -flto -fstack-protector-strong -fomit-frame-pointer -fPIC -Wformat -Wdate-time -D_FORTIFY_SOURCE=2 ' \
 	--add-module=/usr/local/src/ngx_brotli \
