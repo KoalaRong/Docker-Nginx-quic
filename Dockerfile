@@ -9,7 +9,7 @@ RUN set -x \
 	&& apk add --no-cache --virtual .build-deps \
 	gcc libc-dev perl-dev git cmake make g++ libunwind-dev linux-headers musl-dev musl-utils \
 	&& mkdir -p /usr/local/src \
-	&& git clone https://github.com/google/boringssl.git /usr/local/src/boringssl \
+	&& git clone --depth=1 https://github.com/google/boringssl.git /usr/local/src/boringssl \
 	&& cd /usr/local/src/boringssl \
 	&& mkdir build && cd build && cmake .. \
 	&& make -j$(getconf _NPROCESSORS_ONLN) && cd ../ \
@@ -56,18 +56,16 @@ RUN set -x \
 	findutils \
 	build-base \
 	wget \
-	&& wget https://nginx.org/download/nginx-${NGINX_VERSION}.tar.gz \
-	&& tar -zxC /usr/local/src -f nginx-$NGINX_VERSION.tar.gz \
-	&& rm nginx-$NGINX_VERSION.tar.gz \
+	&& hg clone http://hg.nginx.org/nginx-quic && cd nginx-quic && hg update 'quic' \
 	# ngx_brotli
-	&& git clone https://github.com/google/ngx_brotli.git /usr/local/src/ngx_brotli \
+	&& git clone --depth=1 https://github.com/google/ngx_brotli.git /usr/local/src/ngx_brotli \
 	&& cd /usr/local/src/ngx_brotli \
 	&& git submodule update --init \	
 	# make nginx
-	&& cd /usr/local/src/nginx-$NGINX_VERSION \
-	&& patch -p1 < /usr/local/src/patch/nginx.patch \
+	&& cd /usr/local/src/nginx-quic \
+	# && patch -p1 < /usr/local/src/patch/nginx.patch \
 	&& patch -p1 < /usr/local/src/patch/Enable_BoringSSL_OCSP.patch \
-	&& ./configure \
+    && ./auto/configure \
 	--prefix=/etc/nginx \
 	--sbin-path=/usr/sbin/nginx \
 	--modules-path=/usr/lib/nginx/modules \
@@ -101,6 +99,9 @@ RUN set -x \
 	--with-http_stub_status_module \
 	--with-http_sub_module \
 	--with-http_v2_module \
+	--with-http_quic_module \
+    --with-stream_quic_module \
+    --with-http_v3_module \
 	--with-mail \
 	--with-mail_ssl_module \
 	--with-stream \
@@ -127,8 +128,8 @@ RUN set -x \
 	&& rm -rf /etc/nginx/html/ \
 	&& mkdir /etc/nginx/conf.d/ \
 	&& mkdir -p /usr/share/nginx/html/ \
-	&& install -m644 html/index.html /usr/share/nginx/html/ \
-	&& install -m644 html/50x.html /usr/share/nginx/html/ \
+	&& install -m644 docs/html/index.html /usr/share/nginx/html/ \
+	&& install -m644 docs/html/50x.html /usr/share/nginx/html/ \
 	&& ln -s ../../usr/lib/nginx/modules /etc/nginx/modules \
 	&& strip /usr/sbin/nginx* \
 	&& strip /usr/lib/nginx/modules/*.so  
