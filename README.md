@@ -2,6 +2,12 @@
 
 基于官方mainline-alpine版本修改
 
+## Update 2021-10-20
+
+升级Nginx到1.21.3版本
+
+使用Nginx官方nginx-quic分支，支持http3/quic协议（未测试）
+
 ## Update 2021-09-06
 
 移除Lua-Nginx-Module
