@@ -1,11 +1,11 @@
-FROM golang:alpine as boringssl_builder
+FROM golang:alpine3.14 as boringssl_builder
 
 RUN set -x \
 	# use tuna mirrors 
-	&& sed -i 's/dl-cdn.alpinelinux.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apk/repositories \
+	# && sed -i 's/dl-cdn.alpinelinux.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apk/repositories \
 	&& go env -w GO111MODULE=on \
 	&& go env -w GOPROXY=https://goproxy.cn,direct \
-	#use goproxy
+	# use goproxy
 	&& apk add --no-cache --virtual .build-deps \
 	gcc libc-dev perl-dev git cmake make g++ libunwind-dev linux-headers musl-dev musl-utils \
 	&& mkdir -p /usr/local/src \
@@ -16,10 +16,10 @@ RUN set -x \
 	&& mkdir -p .openssl/lib && cd .openssl && ln -s ../include . && cd ../ \
 	&& cp build/crypto/libcrypto.a build/ssl/libssl.a .openssl/lib 
 
-FROM alpine:latest as nginx_builder
+FROM alpine:3.14 as nginx_builder
 
 ENV NGINX_VERSION 1.21.3
-#https://nginx.org/en/download.html
+# https://nginx.org/en/download.html
 
 WORKDIR /usr/local/src
 COPY ./patch ./patch
@@ -28,7 +28,7 @@ COPY --from=boringssl_builder /usr/local/src/boringssl  ./boringssl
 
 RUN set -x \
 	# use tuna mirrors
-	&& sed -i 's/dl-cdn.alpinelinux.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apk/repositories \
+	# && sed -i 's/dl-cdn.alpinelinux.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apk/repositories \
 	# create nginx user/group first, to be consistent throughout docker variants
 	&& apk add --no-cache --virtual .build-deps \
 	bash \
@@ -40,6 +40,7 @@ RUN set -x \
 	git \
 	gcc \
 	libc-dev \
+	libunwind \
 	make \
 	pcre-dev \
 	zlib-dev \
@@ -56,14 +57,23 @@ RUN set -x \
 	findutils \
 	build-base \
 	wget \
-	&& wget https://nginx.org/download/nginx-${NGINX_VERSION}.tar.gz \
-	&& tar -zxC /usr/local/src -f nginx-$NGINX_VERSION.tar.gz \
-	&& rm nginx-$NGINX_VERSION.tar.gz \
 	# ngx_brotli
 	&& git clone https://github.com/google/ngx_brotli.git /usr/local/src/ngx_brotli \
 	&& cd /usr/local/src/ngx_brotli \
-	&& git submodule update --init \	
-	# make nginx
+	&& git submodule update --init \
+	# TCMalloc
+	&& wget https://github.com/gperftools/gperftools/releases/download/gperftools-2.9.1/gperftools-2.9.1.tar.gz	\
+	&& tar -zxC /usr/local/src -f gperftools-2.9.1.tar.gz \
+	&& rm gperftools-2.9.1.tar.gz \
+	&& cd /usr/local/src/gperftools-2.9.1 \
+	&& ./configure --enable-frame-pointers \
+	&& make -j$(getconf _NPROCESSORS_ONLN) && make install \
+	# && echo '/usr/local/lib' >  /etc/ld.so.conf \
+	# && ldconfig \
+	# nginx	
+	&& wget https://nginx.org/download/nginx-${NGINX_VERSION}.tar.gz \
+	&& tar -zxC /usr/local/src -f nginx-$NGINX_VERSION.tar.gz \
+	&& rm nginx-$NGINX_VERSION.tar.gz \
 	&& cd /usr/local/src/nginx-$NGINX_VERSION \
 	&& patch -p1 < /usr/local/src/patch/nginx.patch \
 	&& patch -p1 < /usr/local/src/patch/Enable_BoringSSL_OCSP.patch \
@@ -116,9 +126,10 @@ RUN set -x \
 	--with-stream_realip_module \
 	--with-stream_geoip_module=dynamic \
 	--with-pcre-jit \
+	--with-google_perftools_module \
 	--with-openssl=/usr/local/src/boringssl/ \
 	--with-openssl-opt='zlib -march=native -Wl,-flto' \
-	--with-ld-opt='-Wl,-z,relro -Wl,-z,now -fPIC -lrt ' \
+	--with-ld-opt='-Wl,-z,relro -Wl,-z,now -Wl,-rpath -Wl,/usr/local/lib -fPIC -lrt ' \
 	--with-cc-opt='-m64 -O3 -g -DTCP_FASTOPEN=23 -ffast-math -march=native -flto -fstack-protector-strong -fomit-frame-pointer -fPIC -Wformat -Wdate-time -D_FORTIFY_SOURCE=2 ' \
 	--add-module=/usr/local/src/ngx_brotli \
 	&& touch /usr/local/src/boringssl/.openssl/include/openssl/ssl.h \
@@ -133,15 +144,17 @@ RUN set -x \
 	&& strip /usr/sbin/nginx* \
 	&& strip /usr/lib/nginx/modules/*.so  
 
-FROM alpine:latest
+FROM alpine:3.14
 
 COPY --from=nginx_builder /etc/nginx /etc/nginx
 COPY --from=nginx_builder /usr/sbin/nginx /usr/sbin/nginx
 COPY --from=nginx_builder /usr/lib/nginx/modules/ /usr/lib/nginx/modules/
 COPY --from=nginx_builder /usr/share/nginx/html/ /usr/share/nginx/html/
+#COPY --from=nginx_builder /usr/local/lib/ /usr/local/lib/
+COPY --from=nginx_builder /usr/local/lib/libprofiler.so.* /usr/local/lib/libprofiler.so.0
 
 RUN set -x \
-	&& sed -i 's/dl-cdn.alpinelinux.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apk/repositories \
+	# && sed -i 's/dl-cdn.alpinelinux.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apk/repositories \
 	# && apk --no-cache upgrade \
 	# create nginx user/group first, to be consistent throughout docker variants
 	&& addgroup -g 101 -S nginx \
@@ -166,7 +179,12 @@ RUN set -x \
 	# Bring in tzdata so users could set the timezones through the environment
 	# variables
 	&& apk add --no-cache tzdata \
+	&& apk add --no-cache --virtual .build-deps \
+	libstdc++ \
+	libunwind-dev \
 	# forward request and error logs to docker log collector
+	&& mkdir /tmp/tcmalloc \
+	&& chmod 777 /tmp/tcmalloc \
 	&& ln -sf /dev/stdout /var/log/nginx/access.log \
 	&& ln -sf /dev/stderr /var/log/nginx/error.log 
 
