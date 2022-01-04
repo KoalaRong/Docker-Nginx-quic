@@ -1,4 +1,4 @@
-FROM golang:alpine3.14 as boringssl_builder
+FROM golang:alpine as boringssl_builder
 
 RUN set -x \
 	# use tuna mirrors 
@@ -16,9 +16,11 @@ RUN set -x \
 	&& mkdir -p .openssl/lib && cd .openssl && ln -s ../include . && cd ../ \
 	&& cp build/crypto/libcrypto.a build/ssl/libssl.a .openssl/lib 
 
-FROM alpine:3.14 as nginx_builder
+FROM alpine:latest as nginx_builder
 
-ENV NGINX_VERSION 1.21.4
+ENV HTTP_PROXY="http://172.26.16.1:7890"
+ENV HTTPS_PROXY="http://172.26.16.1:7890"
+ENV NGINX_VERSION 1.21.5
 # https://nginx.org/en/download.html
 
 WORKDIR /usr/local/src
@@ -43,7 +45,7 @@ RUN set -x \
 	libc-dev \
 	libunwind \
 	make \
-	pcre-dev \
+	pcre2-dev \
 	zlib-dev \
 	openssl-dev \
 	linux-headers \
@@ -138,7 +140,7 @@ RUN set -x \
 	&& strip /usr/sbin/nginx* \
 	&& strip /usr/lib/nginx/modules/*.so  
 
-FROM alpine:3.14
+FROM alpine:latest
 
 COPY --from=nginx_builder /etc/nginx /etc/nginx
 COPY --from=nginx_builder /usr/sbin/nginx /usr/sbin/nginx
