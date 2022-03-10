@@ -1,5 +1,8 @@
 FROM golang:alpine as boringssl_builder
 
+#ARG HTTP_PROXY="http://192.168.240.1:7890"
+#ARG HTTPS_PROXY="http://192.168.240.1:7890"
+
 RUN set -x \
 	# use tuna mirrors 
 	#&& sed -i 's/dl-cdn.alpinelinux.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apk/repositories \
@@ -18,9 +21,9 @@ RUN set -x \
 
 FROM alpine:latest as nginx_builder
 
-ENV HTTP_PROXY="http://172.26.16.1:7890"
-ENV HTTPS_PROXY="http://172.26.16.1:7890"
-ENV NGINX_VERSION 1.21.5
+#ARG HTTP_PROXY="http://192.168.240.1:7890"
+#ARG HTTPS_PROXY="http://192.168.240.1:7890"
+ARG NGINX_VERSION 1.21.6
 # https://nginx.org/en/download.html
 
 WORKDIR /usr/local/src
@@ -141,6 +144,9 @@ RUN set -x \
 	&& strip /usr/lib/nginx/modules/*.so  
 
 FROM alpine:latest
+
+#ARG HTTP_PROXY="http://192.168.240.1:7890"
+#ARG HTTPS_PROXY="http://192.168.240.1:7890"
 
 COPY --from=nginx_builder /etc/nginx /etc/nginx
 COPY --from=nginx_builder /usr/sbin/nginx /usr/sbin/nginx
