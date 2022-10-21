@@ -1,38 +1,41 @@
 FROM golang:alpine as boringssl_builder
 
-#ARG HTTP_PROXY="http://192.168.240.1:7890"
-#ARG HTTPS_PROXY="http://192.168.240.1:7890"
+#ARG HTTP_PROXY="http://192.168.70.116:7890"
+#ARG HTTPS_PROXY="http://192.168.70.116:7890"
 
 RUN set -x \
 	# use tuna mirrors 
 	#&& sed -i 's/dl-cdn.alpinelinux.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apk/repositories \
+	# use goproxy
 	&& go env -w GO111MODULE=on \
 	&& go env -w GOPROXY=https://goproxy.cn,direct \
-	# use goproxy
 	&& apk add --no-cache --virtual .build-deps \
-	gcc libc-dev perl-dev git cmake make g++ libunwind-dev linux-headers musl-dev musl-utils \
+	git cmake samurai libstdc++ build-base perl-dev linux-headers libunwind-dev \
 	&& mkdir -p /usr/local/src \
-	&& git clone https://github.com/google/boringssl.git /usr/local/src/boringssl \
+	&& git clone --depth=1 -b master https://github.com/google/boringssl.git /usr/local/src/boringssl \
 	&& cd /usr/local/src/boringssl \
-	&& mkdir build && cd build && cmake .. \
-	&& make -j$(getconf _NPROCESSORS_ONLN) && cd ../ \
-	&& mkdir -p .openssl/lib && cd .openssl && ln -s ../include . && cd ../ \
-	&& cp build/crypto/libcrypto.a build/ssl/libssl.a .openssl/lib 
+	&& mkdir build \
+    && cd build \
+    && cmake -GNinja .. \
+    && ninja \
+    && ls -la \
+    && ls -la ../include \
+    && apk del --no-network .build-deps
 
 FROM alpine:latest as nginx_builder
 
-#ARG HTTP_PROXY="http://192.168.240.1:7890"
-#ARG HTTPS_PROXY="http://192.168.240.1:7890"
-ARG NGINX_VERSION 1.21.6
+#ARG HTTP_PROXY="http://192.168.70.116:7890"
+#ARG HTTPS_PROXY="http://192.168.70.116:7890"
+ARG NGINX_VERSION="1.23.2"
 # https://nginx.org/en/download.html
 
 WORKDIR /usr/local/src
 #COPY ./patch ./patch
 
-COPY --from=boringssl_builder /usr/local/src/boringssl  ./boringssl
+#COPY --from=boringssl_builder /usr/local/src/boringssl  ./boringssl
 
-
-RUN set -x \
+RUN --mount=type=bind,from=boringssl_builder,source=/usr/local/src/boringssl,target=/usr/local/src/boringssl \
+    set -x \
 	# use tuna mirrors
 	#&& sed -i 's/dl-cdn.alpinelinux.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apk/repositories \
 	# create nginx user/group first, to be consistent throughout docker variants
@@ -125,13 +128,9 @@ RUN set -x \
 	--with-stream_realip_module \
 	--with-stream_geoip_module=dynamic \
 	--with-pcre-jit \
-	--with-openssl=/usr/local/src/boringssl/ \
-	--with-openssl-opt='zlib -march=native -Wl,-flto' \
-	#--with-ld-opt='-Wl,-z,relro -Wl,-z,now -Wl,-rpath -Wl,/usr/local/lib -fPIC -lrt ' \
-	--with-ld-opt='-Wl,-z,relro -Wl,-z,now -fPIC -lrt ' \
-	--with-cc-opt='-m64 -O3 -g -DTCP_FASTOPEN=23 -ffast-math -march=native -flto -fstack-protector-strong -fomit-frame-pointer -fPIC -Wformat -Wdate-time -D_FORTIFY_SOURCE=2 ' \
+	--with-ld-opt='-L../boringssl/build/ssl -L../boringssl/build/crypto -Wl,-z,relro -Wl,-z,now -fPIC -lrt ' \
+	--with-cc-opt='-I../boringssl/include -m64 -O3 -g -DTCP_FASTOPEN=23 -ffast-math -march=native -flto -fstack-protector-strong -fomit-frame-pointer -fPIC -Wformat -Wdate-time -D_FORTIFY_SOURCE=2 ' \
 	--add-module=/usr/local/src/ngx_brotli \
-	&& touch /usr/local/src/boringssl/.openssl/include/openssl/ssl.h \
 	&& make -j$(getconf _NPROCESSORS_ONLN) \
 	&& make install \
 	&& rm -rf /etc/nginx/html/ \
@@ -141,12 +140,9 @@ RUN set -x \
 	&& install -m644 html/50x.html /usr/share/nginx/html/ \
 	&& ln -s ../../usr/lib/nginx/modules /etc/nginx/modules \
 	&& strip /usr/sbin/nginx* \
-	&& strip /usr/lib/nginx/modules/*.so  
+	&& strip /usr/lib/nginx/modules/*.so 
 
 FROM alpine:latest
-
-#ARG HTTP_PROXY="http://192.168.240.1:7890"
-#ARG HTTPS_PROXY="http://192.168.240.1:7890"
 
 COPY --from=nginx_builder /etc/nginx /etc/nginx
 COPY --from=nginx_builder /usr/sbin/nginx /usr/sbin/nginx
