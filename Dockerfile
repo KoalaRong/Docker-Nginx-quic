@@ -11,6 +11,8 @@ RUN set -x \
 	# use goproxy
 	&& go env -w GO111MODULE=on \
 	&& go env -w GOPROXY=https://goproxy.cn,direct \
+	&& apk update \
+	&& apk upgrade \
 	&& apk add --no-cache --virtual .build-deps \
 	git cmake samurai libstdc++ build-base perl-dev linux-headers libunwind-dev \
 	&& mkdir -p /usr/local/src \
@@ -28,7 +30,7 @@ FROM alpine:${ALPINE_VERSION} as nginx_builder
 
 ARG HTTP_PROXY="http://192.168.70.116:7890"
 ARG HTTPS_PROXY="http://192.168.70.116:7890"
-ARG NGINX_VERSION="1.23.4-20230214"
+ARG NGINX_VERSION="1.23.4-20230308"
 # https://nginx.org/en/download.html
 
 WORKDIR /usr/local/src
@@ -37,6 +39,8 @@ RUN --mount=type=bind,from=boringssl_builder,source=/usr/local/src/boringssl,tar
     set -x \
 	# use tuna mirrors
 	#&& sed -i 's/dl-cdn.alpinelinux.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apk/repositories \
+	&& apk update \
+	&& apk upgrade \
 	&& apk add --no-cache --virtual .build-deps \
 	bash \
 	binutils \
@@ -163,6 +167,8 @@ RUN set -x \
 	# the rest away. To do this, we need to install `gettext`
 	# then move `envsubst` out of the way so `gettext` can
 	# be deleted completely, then move `envsubst` back.
+	&& apk update \
+	&& apk upgrade \
 	&& apk add --no-cache --virtual .gettext gettext \
 	&& mv /usr/bin/envsubst /tmp/ \
 	&& mkdir -p /var/cache/nginx \
