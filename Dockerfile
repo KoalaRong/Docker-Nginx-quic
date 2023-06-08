@@ -1,4 +1,4 @@
-ARG ALPINE_VERSION="3.17"
+ARG ALPINE_VERSION="3.18"
 
 FROM golang:alpine${ALPINE_VERSION} as boringssl_builder
 
@@ -30,7 +30,7 @@ FROM alpine:${ALPINE_VERSION} as nginx_builder
 
 ARG HTTP_PROXY="http://192.168.70.116:7890"
 ARG HTTPS_PROXY="http://192.168.70.116:7890"
-ARG NGINX_VERSION="1.23.4-20230308"
+ARG NGINX_VERSION="1.25.0"
 # https://nginx.org/en/download.html
 
 WORKDIR /usr/local/src
@@ -73,14 +73,18 @@ RUN --mount=type=bind,from=boringssl_builder,source=/usr/local/src/boringssl,tar
 	&& git submodule update --init \
 	# nginx	
 	&& mkdir /usr/local/src/patch \
-	#&& wget https://raw.fastgit.org/kn007/patch/master/nginx.patch -O /usr/local/src/patch/nginx.patch \
-	&& wget https://hg.nginx.org/nginx-quic/archive/quic.tar.gz \
-	&& tar -zxC /usr/local/src -f quic.tar.gz \
-	&& rm quic.tar.gz \
-	&& cd /usr/local/src/nginx-quic-quic \
-	#&& patch -p1 < /usr/local/src/patch/nginx.patch \
+	&& wget https://raw.fastgit.org/kn007/patch/master/nginx.patch -O /usr/local/src/patch/nginx.patch \
+	#&& wget https://hg.nginx.org/nginx-quic/archive/quic.tar.gz \
+	#&& tar -zxC /usr/local/src -f quic.tar.gz \
+	#&& rm quic.tar.gz \
+	#&& cd /usr/local/src/nginx-quic-quic \
+	&& wget https://nginx.org/download/nginx-${NGINX_VERSION}.tar.gz \
+	&& tar -zxC /usr/local/src -f nginx-${NGINX_VERSION}.tar.gz \
+	&& rm nginx-${NGINX_VERSION}.tar.gz \
+	&& cd /usr/local/src/nginx-${NGINX_VERSION} \
+	&& patch -p1 < /usr/local/src/patch/nginx.patch \
 	#&& patch -p1 < /usr/local/src/patch/Enable_BoringSSL_OCSP.patch \
-	&& ./auto/configure \
+	&& ./configure \
 	#--with-debug \
 	--prefix=/etc/nginx \
 	--sbin-path=/usr/sbin/nginx \
@@ -115,7 +119,7 @@ RUN --mount=type=bind,from=boringssl_builder,source=/usr/local/src/boringssl,tar
 	--with-http_stub_status_module \
 	--with-http_sub_module \
 	--with-http_v2_module \
-	#--with-http_v2_hpack_enc \
+	--with-http_v2_hpack_enc \
 	--with-http_v3_module \
 	--with-http_xslt_module=dynamic \
 	--with-http_image_filter_module=dynamic \
@@ -123,7 +127,7 @@ RUN --mount=type=bind,from=boringssl_builder,source=/usr/local/src/boringssl,tar
 	--with-mail \
 	--with-mail_ssl_module \
 	--with-stream \
-	--with-stream_quic_module \
+	#--with-stream_quic_module \
 	--with-stream_realip_module \
 	--with-stream_ssl_module \
 	--with-stream_ssl_preread_module\
@@ -138,8 +142,8 @@ RUN --mount=type=bind,from=boringssl_builder,source=/usr/local/src/boringssl,tar
 	&& rm -rf /etc/nginx/html/ \
 	&& mkdir /etc/nginx/conf.d/ \
 	&& mkdir -p /usr/share/nginx/html/ \
-	#&& install -m644 html/index.html /usr/share/nginx/html/ \
-	#&& install -m644 html/50x.html /usr/share/nginx/html/ \
+	&& install -m644 html/index.html /usr/share/nginx/html/ \
+	&& install -m644 html/50x.html /usr/share/nginx/html/ \
 	&& ln -s ../../usr/lib/nginx/modules /etc/nginx/modules \
 	&& strip /usr/sbin/nginx* \
 	&& strip /usr/lib/nginx/modules/*.so 
@@ -157,8 +161,8 @@ COPY --from=nginx_builder /usr/share/nginx/html/ /usr/share/nginx/html/
 #COPY --from=nginx_builder /usr/local/lib/libprofiler.so.* /usr/local/lib/libprofiler.so.0
 
 RUN set -x \
-	#&& sed -i 's/dl-cdn.alpinelinux.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apk/repositories \
-	# && apk --no-cache upgrade \
+	&& sed -i 's/dl-cdn.alpinelinux.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apk/repositories \
+	&& apk --no-cache upgrade \
 	# create nginx user/group first, to be consistent throughout docker variants
 	&& rm -rf /usr/local/src \
 	&& addgroup -g 101 -S nginx \
