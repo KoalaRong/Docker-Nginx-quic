@@ -12,7 +12,7 @@ RUN set -x \
 	&& go env -w GO111MODULE=on \
 	&& go env -w GOPROXY=https://goproxy.cn,direct \
 	&& apk update \
-	&& apk upgrade \
+	&& apk --no-cache upgrade \
 	&& apk add --no-cache --virtual .build-deps \
 	git cmake samurai libstdc++ build-base perl-dev linux-headers libunwind-dev \
 	&& mkdir -p /usr/local/src \
@@ -30,7 +30,7 @@ FROM alpine:${ALPINE_VERSION} as nginx_builder
 
 ARG HTTP_PROXY="http://192.168.70.116:7890"
 ARG HTTPS_PROXY="http://192.168.70.116:7890"
-ARG NGINX_VERSION="1.25.0"
+ARG NGINX_VERSION="1.25.2"
 # https://nginx.org/en/download.html
 
 WORKDIR /usr/local/src
@@ -40,7 +40,7 @@ RUN --mount=type=bind,from=boringssl_builder,source=/usr/local/src/boringssl,tar
 	# use tuna mirrors
 	#&& sed -i 's/dl-cdn.alpinelinux.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apk/repositories \
 	&& apk update \
-	&& apk upgrade \
+	&& apk --no-cache upgrade \
 	&& apk add --no-cache --virtual .build-deps \
 	bash \
 	binutils \
@@ -73,7 +73,7 @@ RUN --mount=type=bind,from=boringssl_builder,source=/usr/local/src/boringssl,tar
 	&& git submodule update --init \
 	# nginx	
 	&& mkdir /usr/local/src/patch \
-	&& wget https://raw.fastgit.org/kn007/patch/master/nginx.patch -O /usr/local/src/patch/nginx.patch \
+	&& wget https://raw.githubusercontent.com/kn007/patch/master/nginx_dynamic_tls_records.patch -O /usr/local/src/patch/nginx_dynamic_tls_records.patch \
 	#&& wget https://hg.nginx.org/nginx-quic/archive/quic.tar.gz \
 	#&& tar -zxC /usr/local/src -f quic.tar.gz \
 	#&& rm quic.tar.gz \
@@ -82,7 +82,7 @@ RUN --mount=type=bind,from=boringssl_builder,source=/usr/local/src/boringssl,tar
 	&& tar -zxC /usr/local/src -f nginx-${NGINX_VERSION}.tar.gz \
 	&& rm nginx-${NGINX_VERSION}.tar.gz \
 	&& cd /usr/local/src/nginx-${NGINX_VERSION} \
-	&& patch -p1 < /usr/local/src/patch/nginx.patch \
+	&& patch -p1 < /usr/local/src/patch/nginx_dynamic_tls_records.patch \
 	#&& patch -p1 < /usr/local/src/patch/Enable_BoringSSL_OCSP.patch \
 	&& ./configure \
 	#--with-debug \
@@ -119,7 +119,6 @@ RUN --mount=type=bind,from=boringssl_builder,source=/usr/local/src/boringssl,tar
 	--with-http_stub_status_module \
 	--with-http_sub_module \
 	--with-http_v2_module \
-	--with-http_v2_hpack_enc \
 	--with-http_v3_module \
 	--with-http_xslt_module=dynamic \
 	--with-http_image_filter_module=dynamic \
@@ -161,7 +160,7 @@ COPY --from=nginx_builder /usr/share/nginx/html/ /usr/share/nginx/html/
 #COPY --from=nginx_builder /usr/local/lib/libprofiler.so.* /usr/local/lib/libprofiler.so.0
 
 RUN set -x \
-	&& sed -i 's/dl-cdn.alpinelinux.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apk/repositories \
+	#&& sed -i 's/dl-cdn.alpinelinux.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apk/repositories \
 	&& apk --no-cache upgrade \
 	# create nginx user/group first, to be consistent throughout docker variants
 	&& rm -rf /usr/local/src \
@@ -172,7 +171,7 @@ RUN set -x \
 	# then move `envsubst` out of the way so `gettext` can
 	# be deleted completely, then move `envsubst` back.
 	&& apk update \
-	&& apk upgrade \
+	&& apk --no-cache upgrade \
 	&& apk add --no-cache --virtual .gettext gettext \
 	&& mv /usr/bin/envsubst /tmp/ \
 	&& mkdir -p /var/cache/nginx \
