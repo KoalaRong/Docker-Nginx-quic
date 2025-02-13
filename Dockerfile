@@ -1,6 +1,6 @@
-ARG ALPINE_VERSION="3.18"
+ARG ALPINE_VERSION="3.21"
 
-FROM golang:alpine${ALPINE_VERSION} as boringssl_builder
+FROM golang:alpine${ALPINE_VERSION} AS boringssl_builder
 
 ARG HTTP_PROXY="http://192.168.70.116:7890"
 ARG HTTPS_PROXY="http://192.168.70.116:7890"
@@ -17,20 +17,15 @@ RUN set -x \
 	git cmake samurai libstdc++ build-base perl-dev linux-headers libunwind-dev \
 	&& mkdir -p /usr/local/src \
 	&& git clone --depth=1 -b master https://github.com/google/boringssl.git /usr/local/src/boringssl \
-	&& cd /usr/local/src/boringssl \
-	&& mkdir build \
-    && cd build \
-    && cmake -GNinja .. \
-    && ninja \
-    && ls -la \
-    && ls -la ../include \
+	&& cd /usr/local/src/boringssl && mkdir build && cd build && cmake .. \
+	&& make -j$(getconf _NPROCESSORS_ONLN) \
     && apk del --no-network .build-deps
 
-FROM alpine:${ALPINE_VERSION} as nginx_builder
+FROM alpine:${ALPINE_VERSION} AS nginx_builder
 
 ARG HTTP_PROXY="http://192.168.70.116:7890"
 ARG HTTPS_PROXY="http://192.168.70.116:7890"
-ARG NGINX_VERSION="1.25.2"
+ARG NGINX_VERSION="1.27.4"
 # https://nginx.org/en/download.html
 
 WORKDIR /usr/local/src
@@ -55,7 +50,6 @@ RUN --mount=type=bind,from=boringssl_builder,source=/usr/local/src/boringssl,tar
 	make \
 	pcre2-dev \
 	zlib-dev \
-	openssl-dev \
 	linux-headers \
 	libxslt-dev \
 	gd-dev \
@@ -73,17 +67,14 @@ RUN --mount=type=bind,from=boringssl_builder,source=/usr/local/src/boringssl,tar
 	&& git submodule update --init \
 	# nginx	
 	&& mkdir /usr/local/src/patch \
-	&& wget https://raw.githubusercontent.com/kn007/patch/master/nginx_dynamic_tls_records.patch -O /usr/local/src/patch/nginx_dynamic_tls_records.patch \
-	#&& wget https://hg.nginx.org/nginx-quic/archive/quic.tar.gz \
-	#&& tar -zxC /usr/local/src -f quic.tar.gz \
-	#&& rm quic.tar.gz \
-	#&& cd /usr/local/src/nginx-quic-quic \
+	&& wget https://cdn.jsdelivr.net/gh/kn007/patch@master/nginx_dynamic_tls_records.patch -O /usr/local/src/patch/nginx_dynamic_tls_records.patch \
+	&& wget https://cdn.jsdelivr.net/gh/kn007/patch@master/use_openssl_md5_sha1.patch -O /usr/local/src/patch/use_openssl_md5_sha1.patch \
 	&& wget https://nginx.org/download/nginx-${NGINX_VERSION}.tar.gz \
 	&& tar -zxC /usr/local/src -f nginx-${NGINX_VERSION}.tar.gz \
 	&& rm nginx-${NGINX_VERSION}.tar.gz \
 	&& cd /usr/local/src/nginx-${NGINX_VERSION} \
 	&& patch -p1 < /usr/local/src/patch/nginx_dynamic_tls_records.patch \
-	#&& patch -p1 < /usr/local/src/patch/Enable_BoringSSL_OCSP.patch \
+	&& patch -p1 < /usr/local/src/patch/use_openssl_md5_sha1.patch \
 	&& ./configure \
 	#--with-debug \
 	--prefix=/etc/nginx \
@@ -133,8 +124,9 @@ RUN --mount=type=bind,from=boringssl_builder,source=/usr/local/src/boringssl,tar
 	--with-stream_realip_module \
 	--with-stream_geoip_module=dynamic \
 	--with-pcre-jit \
+	--with-cc=c++ \
+	--with-cc-opt='-I../boringssl/include -x c -m64 -O3 -g -DTCP_FASTOPEN=23 -ffast-math -march=native -flto -fstack-protector-strong -fomit-frame-pointer -fPIC -Wformat -Wdate-time -D_FORTIFY_SOURCE=2' \
 	--with-ld-opt='-L../boringssl/build/ssl -L../boringssl/build/crypto -Wl,-z,relro -Wl,-z,now -fPIC -lrt ' \
-	--with-cc-opt='-I../boringssl/include -m64 -O3 -g -DTCP_FASTOPEN=23 -ffast-math -march=native -flto -fstack-protector-strong -fomit-frame-pointer -fPIC -Wformat -Wdate-time -D_FORTIFY_SOURCE=2 ' \
 	--add-module=/usr/local/src/ngx_brotli \
 	&& make -j$(getconf _NPROCESSORS_ONLN) \
 	&& make install \
@@ -164,8 +156,8 @@ RUN set -x \
 	&& apk --no-cache upgrade \
 	# create nginx user/group first, to be consistent throughout docker variants
 	&& rm -rf /usr/local/src \
-	&& addgroup -g 101 -S nginx \
-	&& adduser -S -D -H -u 101 -h /var/cache/nginx -s /sbin/nologin -G nginx -g nginx nginx \
+	&& addgroup -g 1001 -S nginx \
+	&& adduser -S -D -H -u 1001 -h /var/cache/nginx -s /sbin/nologin -G nginx -g nginx nginx \
 	# Bring in gettext so we can get `envsubst`, then throw
 	# the rest away. To do this, we need to install `gettext`
 	# then move `envsubst` out of the way so `gettext` can
